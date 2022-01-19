@@ -157,9 +157,6 @@ def replace_update_cand_dict(cand_dict_arr, replace_seg_id_ls, replace_start_ls)
         cand_dict_arr[replace_seg_id]['xlm'] = np.array(new_cand_ls)
     return cand_dict_arr
 
-4 3 2 1 0
-1 0 0 2 1 0
-
 """delete operation to update the candidate dict"""
 def delete_update_cand_dict(cand_dict_arr, del_seg_id_ls, del_start_ls, del_len_ls):
     for del_seg_id, del_start, del_len in zip(del_seg_id_ls, del_start_ls, del_len_ls):

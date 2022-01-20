@@ -19,12 +19,12 @@ def batchify(lst, batch_size):
     for i in range(0, len(lst), batch_size):
         yield lst[i:min(i+batch_size, len(lst))]
 
-def noise_sanity_check(cand_arr, num_noises, del_noise_lam, mask_noise_lam):
+def noise_sanity_check(cand_arr, num_noises, del_noise_lam=None, mask_noise_lam=None):
     # decide noise type upon function called, only sentences have one noise and step 1 can have MBart noises
     if num_noises == 1:
-        noise_type = random.choices([1, 2, 3, 4, 5, 6], weights=(4, 4, 1, 1, 0, 1), k=1)[0]
+        noise_type = random.choices([1, 2, 3, 4, 5, 6], weights=(0, 0, 1, 0, 0, 0), k=1)[0]
     else:
-        noise_type = random.choices([3, 4, 5, 6], weights=(1, 1, 0, 1), k=1)[0]
+        noise_type = random.choices([3, 4, 5, 6], weights=(1, 0, 0, 0), k=1)[0]
 
     if noise_type == 1 or noise_type == 2:
         start_index = random.choices(range(cand_arr['mbart'].shape[0]), k=1)[0]
@@ -37,7 +37,10 @@ def noise_sanity_check(cand_arr, num_noises, del_noise_lam, mask_noise_lam):
             return noise_type, start_index, 0
     # this is the MBart replace noise which can replace the span of noises
     elif noise_type == 2:
-        num_replace = random.choices([1, 2, 3, 4, 5, 6], k=1)[0]
+        if mask_noise_lam:
+            num_replace = random.choices([1, 2, 3, 4, 5, 6], weights=poisson.pmf(np.arange(1, 7, 1), mu=mask_noise_lam, loc=1), k=1)[0]
+        else:
+            num_replace = random.choices([1, 2, 3, 4, 5, 6], k=1)[0]
         # check if noise position and span length fits current noise context
         if cand_arr['mbart'][start_index] >= num_replace and cand_arr['mbart'][start_index] != 0:
             return noise_type, start_index, num_replace
@@ -51,15 +54,18 @@ def noise_sanity_check(cand_arr, num_noises, del_noise_lam, mask_noise_lam):
             return noise_type, start_index, 1
     # this is the swap noise
     elif noise_type == 5:
-        if cand_arr['xlm'].shape[0] > 2:
-            # within range 4 choose the second index
-            start_index = random.choices(range(cand_arr['xlm'].shape[0]-4), k=1)[0] # indices = sorted(random.sample(range(cand_arr['xlm'].shape[0]), 2))
+        if cand_arr['xlm'].shape[0] > 6:
+            # within range 4 choose the second index, -5 because we are switching start_index+1 and end_index+1
+            start_index = random.choices(range(cand_arr['xlm'].shape[0]-6), k=1)[0] # indices = sorted(random.sample(range(cand_arr['xlm'].shape[0]), 2))
             end_index = start_index + random.choices([1,2,3,4], k=1)[0] # start_index, end_index = indices[0], indices[1]
             if cand_arr['xlm'][start_index] > 0 and cand_arr['xlm'][end_index] > 0:
                 return noise_type, start_index, end_index
     # this is the delete noise
     else:
-        num_deletes = random.choices([1, 2, 3, 4], k=1)[0]
+        if del_noise_lam:
+            num_deletes = random.choices([1, 2, 3, 4], weights=poisson.pmf(np.arange(1, 5, 1), mu=del_noise_lam, loc=1), k=1)[0]
+        else:
+            num_deletes = random.choices([1, 2, 3, 4], k=1)[0]
         # check if noise position and span length fits current noise context
         if cand_arr['xlm'][start_index] >= num_deletes and cand_arr['xlm'][start_index] != 0:
             return noise_type, start_index, num_deletes
@@ -141,7 +147,8 @@ def add_update_cand_dict(cand_dict_arr, add_seg_id_ls, add_start_ls):
         for index, _ in enumerate(cand_dict_arr[add_seg_id]['xlm'][:add_start+1]):
             new_cand_ls.append(min(add_start-index, cand_dict_arr[add_seg_id]['xlm'][index]))
         new_cand_ls.extend([0])
-        new_cand_ls.extend(list(cand_dict_arr[add_seg_id]['xlm'][add_start+1:]))
+        if cand_dict_arr[add_seg_id]['xlm'].shape[0] == 126: # xlm at most have sequence length of 126 to incorporate <s> </s> tokens
+            new_cand_ls.extend(list(cand_dict_arr[add_seg_id]['xlm'][add_start+1:-1]))
         cand_dict_arr[add_seg_id]['xlm'] = np.array(new_cand_ls)
     return cand_dict_arr
 
@@ -156,9 +163,6 @@ def replace_update_cand_dict(cand_dict_arr, replace_seg_id_ls, replace_start_ls)
         new_cand_ls.extend(list(cand_dict_arr[replace_seg_id]['xlm'][replace_start+2:]))
         cand_dict_arr[replace_seg_id]['xlm'] = np.array(new_cand_ls)
     return cand_dict_arr
-
-4 3 2 1 0
-1 0 0 2 1 0
 
 """delete operation to update the candidate dict"""
 def delete_update_cand_dict(cand_dict_arr, del_seg_id_ls, del_start_ls, del_len_ls):
@@ -214,24 +218,24 @@ def data_construct(text, noise_type, tokenizer, start_index, num_ops):
     if noise_type == 1:
         sen = '</s> ' + text
         tok_text = tokenizer(sen, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
-        input_ids = torch.cat((tok_text[0][:start_index+1], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+1:]), dim=0)
+        input_ids = torch.cat((tok_text[0][:start_index+2], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+2:]), dim=0) # index shifts by 1 bc of </s>
     elif noise_type == 2:
         sen = '</s> ' + text
         tok_text = tokenizer(sen, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
-        input_ids = torch.cat((tok_text[0][:start_index+1], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+1+num_ops:]), dim=0)
+        input_ids = torch.cat((tok_text[0][:start_index+2], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+2+num_ops:]), dim=0) # index shifts by 1 bc of </s>
     elif noise_type == 3:
-        tok_text = tokenizer(text, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
+        tok_text = tokenizer(text, add_special_tokens=False, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
         input_ids = torch.cat((tok_text[0][:start_index+1], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+1:]), dim=0)
     elif noise_type == 4:
-        tok_text = tokenizer(text, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
+        tok_text = tokenizer(text, add_special_tokens=False, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
         input_ids = torch.cat((tok_text[0][:start_index+1], torch.LongTensor([tokenizer.mask_token_id]), tok_text[0][start_index+1+num_ops:]), dim=0)
     elif noise_type == 5:
         end_index = num_ops
-        tok_text = tokenizer(text, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
+        tok_text = tokenizer(text, add_special_tokens=False, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
         input_ids = torch.cat((tok_text[0][:start_index+1], torch.unsqueeze(tok_text[0][end_index+1], 0), tok_text[0][start_index+2:end_index+1], torch.unsqueeze(tok_text[0][start_index+1], 0), tok_text[0][end_index+2:]), dim=0)
         return tokenizer.decode(input_ids, skip_special_tokens=True)
     else:
-        tok_text = tokenizer(text, add_special_tokens=True, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
+        tok_text = tokenizer(text, add_special_tokens=False, return_tensors="pt", max_length=128, truncation=True, padding=True)['input_ids']
         input_ids = torch.cat((tok_text[0][:start_index+1], tok_text[0][start_index+1+num_ops:]), dim=0)
         return tokenizer.decode(input_ids, skip_special_tokens=True)
 
@@ -245,15 +249,17 @@ def mbart_generation(batch_text, model, lang_code, tokenizer, device):
         return translation
 
 def xlm_roberta_generate(batch_text, model, xlm_tokenizer, device):
-    with torch.no_grad():
-        input_ids = xlm_tokenizer(batch_text, add_special_tokens = False, return_tensors='pt', max_length=128, truncation=True, padding=True)['input_ids'].to(device)
+    with torch.no_grad(): # need to add special tokens bc previous steps didn't 
+        input_ids = xlm_tokenizer(batch_text, add_special_tokens = True, return_tensors='pt', max_length=128, truncation=True, padding=True)['input_ids'].to(device)
         logits = model(input_ids).logits
 
         for i, ele_input_ids in enumerate(input_ids):
-            # print(batch_text[i])
-            # print(input_ids[i])
-            # print((ele_input_ids == xlm_tokenizer.mask_token_id).nonzero())
-            masked_index = (ele_input_ids == xlm_tokenizer.mask_token_id).nonzero().item()
+            try:
+                masked_index = (ele_input_ids == xlm_tokenizer.mask_token_id).nonzero().item()
+            except ValueError:
+                print(batch_text[i])
+                print(ele_input_ids)
+                print(xlm_tokenizer.mask_token_id)
             probs = logits[i, masked_index].softmax(dim=0)
             values, predictions = probs.topk(4)
             pred = random.choices(predictions, k=1)[0]
@@ -331,7 +337,6 @@ def text_score_generate(num_var, lang, ref_lines, noise_planner_num, del_noise_l
         new_seg_ids.extend(mbart_replace_seg_id_ls) # add in all seg ids for mbart replace
         # add all generated mbart add/replace texts into the new_step_ls
         for mbart_batch in batchify(mbart_ls, batch_size_gen):
-            # print(mbart_batch)
             mbart_texts = mbart_generation(mbart_batch, mbart_model, lang, mbart_tokenizer, device)
             new_step_ls.extend(mbart_texts)
 
@@ -370,9 +375,9 @@ def text_score_generate(num_var, lang, ref_lines, noise_planner_num, del_noise_l
                 id_sen_dict[id]['text'].append(new_sen)
                 id_sen_dict[id]['score'] += score
                 id_sen_score_dict[id].append(new_sen+f" [Score: {score}, Info: {step_noise_dict[id]}]")
-            else:
-                print(id_sen_dict[id]['text'])
-                print(new_sen)
+            # else:
+            #     print(id_sen_dict[id]['text'])
+            #     print(new_sen)
 
         print("Finish one step")
 

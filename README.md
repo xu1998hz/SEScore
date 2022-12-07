@@ -1,6 +1,9 @@
 # SEScore
 This repo contains all the codes for SEScore implementation
 
+How to run our code?
+We hosted our SEScore metric and running instructions on HuggingFace: https://huggingface.co/spaces/xu1998hz/sescore
+
 Run new_xlm_mbart_data.py for English:
 python3 new_xlm_mbart_data.py -num_var 10 -lang en_XX -src case_study_src -ref case_study_ref -save save_file_name
 

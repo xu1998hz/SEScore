@@ -1,5 +1,5 @@
 # SEScore
-This repo contains all the codes for SEScore implementation
+This repo contains all the codes for SEScore implementation. SEScore is a reference-based text-generation evaluation metric that requires no pre-human-annotated error data, described in our paper [Not All Errors are Equal: Learning Text Generation Metrics using Stratified Error Synthesis.]("https://arxiv.org/abs/2210.05035") from EMNLP 2022.
 
 How to run our code?
 We hosted our SEScore metric and running instructions on HuggingFace: https://huggingface.co/spaces/xu1998hz/sescore

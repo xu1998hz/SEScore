@@ -4,7 +4,7 @@
 
 ## Best unsupervised evaluation metric in WMT22 in all language pairs and domains! 
 
-This repo contains all the codes for SEScore implementation. SEScore is a reference-based text-generation evaluation metric that requires no pre-human-annotated error data, described in our paper [Not All Errors are Equal: Learning Text Generation Metrics using Stratified Error Synthesis.](https://arxiv.org/abs/2210.05035) from EMNLP 2022.
+This repo contains all the codes for SEScore implementation. SEScore is a reference-based text-generation evaluation metric that requires no pre-human-annotated error data, described in our paper [Not All Errors are Equal: Learning Text Generation Metrics using Stratified Error Synthesis.](https://arxiv.org/abs/2210.05035) from EMNLP 2022. Reader can refer https://research.google/pubs/pub51897/ for our WMT22 results!
 
 Its effectiveness over prior methods like BLEU, BERTScore, BARTScore, PRISM, COMET and BLEURT has been demonstrated on a diverse set of language generation tasks, including translation, captioning, and web text generation. [Readers have even described SEScore as "one unsupervised evaluation to rule them all"](https://twitter.com/LChoshen/status/1580136005654700033) and we are very excited to share it with you!
  
